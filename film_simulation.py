@@ -65,6 +65,26 @@ def load_film_profiles_from_json(json_path):
         )
     return profiles
 
+def filter_film_profiles(profiles, filter_str):
+	"""
+	Return a new dict of profiles whose names match any of the comma-separated
+	terms in filter_str (case-insensitive substring match). If filter_str is None
+	or empty, return the original profiles dict.
+	"""
+	if not filter_str:
+		return profiles
+
+	terms = [t.strip().lower() for t in filter_str.split(",") if t.strip()]
+	if not terms:
+		return profiles
+
+	matched = {}
+	for name, profile in profiles.items():
+		lname = name.lower()
+		if any(term in lname for term in terms):
+			matched[name] = profile
+	return matched
+
 def apply_color_curves(image, curves):
     result = np.zeros_like(image)
     for i, channel in enumerate(['R', 'G', 'B']):
@@ -440,7 +460,7 @@ def process_image(args):
 def get_memory_usage():
     return psutil.virtual_memory().percent
 
-def get_optimal_pool_size(target_memory_usage=75):
+def get_optimal_pool_size(target_memory_usage=50):
     available_memory = 100 - get_memory_usage()
     cpu_count = multiprocessing.cpu_count()
     
@@ -454,8 +474,10 @@ def get_optimal_pool_size(target_memory_usage=75):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Apply film profiles to an image.")
-    parser.add_argument("input_image", help="Path to the input image")
+    parser.add_argument("input_image", help="Path to the input image or a directory of images")
     parser.add_argument("--profiles", help="Path to JSON file containing film profiles")
+    parser.add_argument("--filter", help="Filter profiles by name (case-insensitive, comma separated). Example: --filter kodak,portra")
+    parser.add_argument("--recursive", action="store_true", help="When input is a directory, search subdirectories for images")
     parser.add_argument("--chroma", type=float, help="Override chromatic aberration strength")
     parser.add_argument("--blur", type=float, help="Override blur amount")
     parser.add_argument("--color_temp", type=int, default=6500, help="Color temperature (default: 6500K)")
@@ -468,14 +490,66 @@ if __name__ == "__main__":
     else:
         print("No profile JSON provided. Please provide a JSON file with film profiles.")
         exit(1)
+    
+    # Apply case-insensitive filtering if requested
+    if args.filter:
+        film_profiles = filter_film_profiles(film_profiles, args.filter)
+        if not film_profiles:
+            print(f"No film profiles matched filter: '{args.filter}'. Exiting.")
+            exit(1)
 
-    input_path_base = os.path.splitext(args.input_image)[0]
+    # Gather input files: accept a single file or a directory of images
+    allowed_exts = ('.jpg', '.jpeg', '.png', '.tiff', '.bmp', '.webp')
+    input_paths = []
+    if os.path.isdir(args.input_image):
+        if args.recursive:
+            for root, _, files in os.walk(args.input_image):
+                for fn in files:
+                    if fn.lower().endswith(allowed_exts):
+                        input_paths.append(os.path.join(root, fn))
+        else:
+            for fn in os.listdir(args.input_image):
+                path = os.path.join(args.input_image, fn)
+                if os.path.isfile(path) and fn.lower().endswith(allowed_exts):
+                    input_paths.append(path)
+        if not input_paths:
+            print("No image files found in the provided directory. Exiting.")
+            exit(1)
+    else:
+        if not os.path.isfile(args.input_image):
+            print("Input path does not exist. Exiting.")
+            exit(1)
+        input_paths = [args.input_image]
+    
+    # Summary: show which images and how many profiles will be applied
+    num_images = len(input_paths)
+    num_profiles = len(film_profiles)
+    total_tasks = num_images * num_profiles
+
+    print(f"Found {num_images} image(s) to process.")
+    for ip in input_paths:
+        print(f" - {ip}")
+
+    if num_profiles == 0:
+        print("No film profiles to apply. Exiting.")
+        exit(1)
+
+    # Print profile names (comma separated) — keep concise if many
+    profile_names = list(film_profiles.keys())
+    if len(profile_names) <= 20:
+        print(f"Profiles to apply ({num_profiles}): {', '.join(profile_names)}")
+    else:
+        print(f"Profiles to apply ({num_profiles}): {', '.join(profile_names[:20])}, ... (+{len(profile_names)-20} more)")
+
+    print(f"Total tasks (images x profiles): {total_tasks}")
 
     process_args = []
-    for profile_name, profile in film_profiles.items():
-        output_filename = f"{input_path_base}_{profile_name.replace(' ', '_')}.jpg"
-        process_args.append((args.input_image, profile, args.chroma, args.blur, args.color_temp, args.cross_process, output_filename))
-
+    for input_path in input_paths:
+        input_path_base = os.path.splitext(input_path)[0]
+        for profile_name, profile in film_profiles.items():
+            output_filename = f"{input_path_base}_{profile_name.replace(' ', '_')}.jpg"
+            process_args.append((input_path, profile, args.chroma, args.blur, args.color_temp, args.cross_process, output_filename))
+ 
     if args.parallel:
         pool_size = get_optimal_pool_size()
         print(f"Using parallel processing with pool size: {pool_size}")
@@ -485,5 +559,5 @@ if __name__ == "__main__":
         print("Using sequential processing")
         for arg in process_args:
             process_image(arg)
-
+ 
     print("All images processed.")

@@ -69,10 +69,26 @@ With parallel processing:
 python film_simulation.py input_image.jpg --profiles film_profiles.json --parallel
 ```
 
+### Filter profiles by name (case-insensitive)
+
+Use `--filter` to select which profiles from the JSON should be applied. Matching is a case-insensitive substring check. Provide multiple terms as a comma-separated list; a profile matches if any term appears in its name.
+
+Examples:
+```
+# Apply only profiles that contain "kodak"
+python film_simulation.py input_image.jpg --profiles film_profiles.json --filter kodak
+
+# Apply profiles that match "kodak" or "portra"
+python film_simulation.py input_image.jpg --profiles film_profiles.json --filter kodak,portra
+```
+
+If no profiles match the filter the script exits with a short message.
+
 ### Command-line Arguments
 
 - `input_image`: Path to the input image (required)
 - `--profiles`: Path to JSON file containing film profiles (required)
+- `--filter`: Filter profiles by name (case-insensitive, comma separated). Example: `--filter kodak,portra`
 - `--chroma`: Override chromatic aberration strength
 - `--blur`: Override blur amount
 - `--color_temp`: Color temperature (default: 6500K)
@@ -83,17 +99,27 @@ python film_simulation.py input_image.jpg --profiles film_profiles.json --parall
 
 1. Process an image with default settings:
    ```
-   python film_simulation.py my_photo.jpg --profiles default_profiles.json
+   python film_simulation.py my_photo.jpg --profiles film_profiles.json
    ```
 
 2. Process an image with parallel processing and custom color temperature:
    ```
-   python film_simulation.py my_photo.jpg --profiles custom_profiles.json --parallel --color_temp 5500
+   python film_simulation.py my_photo.jpg --profiles film_profiles.json --parallel --color_temp 5500
    ```
 
 3. Apply cross-processing effect:
    ```
    python film_simulation.py my_photo.jpg --profiles film_profiles.json --cross_process
+   ```
+
+4. Filter profiles by name:
+   ```
+   python film_simulation.py my_photo.jpg --profiles film_profiles.json --filter kodak
+   ```
+
+5. Filter profiles by multiple terms:
+   ```
+   python film_simulation.py my_photo.jpg --profiles film_profiles.json --filter kodak,portra
    ```
 
 ## Custom Film Profiles
